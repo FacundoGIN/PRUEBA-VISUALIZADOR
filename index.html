@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visor GIS – Dique Capurro</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Proj4js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+
+    <!-- Proj4Leaflet -->
+    <script src="https://cdn.jsdelivr.net/npm/proj4leaflet@1.0.2/src/proj4leaflet.js"></script>
+
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+            background: #F3F4F6;
+        }
+
+        /* ── Sidebar ── */
+        #sidebar {
+            width: 320px;
+            min-width: 320px;
+            background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%);
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s ease, min-width 0.3s ease;
+            overflow: hidden;
+            z-index: 1000;
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+        }
+
+        #sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+        }
+
+        #sidebar-inner {
+            min-width: 320px;
+            overflow-y: auto;
+            flex: 1;
+            padding-bottom: 1rem;
+        }
+
+        #sidebar-inner::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #sidebar-inner::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        /* ── Toggle btn ── */
+        #toggle-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            left: 320px;
+            z-index: 2000;
+            transition: left 0.3s ease;
+            background: #1e293b;
+            border: none;
+            border-radius: 0 8px 8px 0;
+            padding: 10px 6px;
+            cursor: pointer;
+            color: #94a3b8;
+            box-shadow: 3px 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #toggle-btn:hover {
+            color: #f8fafc;
+            background: #334155;
+        }
+
+        #sidebar.collapsed~#toggle-btn {
+            left: 0;
+        }
+
+        #map {
+            flex: 1;
+            background: #F3F4F6;
+        }
+
+        /* ── Layer cards ── */
+        .layer-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin: 0 12px 10px;
+            transition: background 0.2s;
+        }
+
+        .layer-card:hover {
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .layer-title {
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .layer-title .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        /* Toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-sw {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #475569;
+            border-radius: 20px;
+            transition: .3s;
+        }
+
+        .slider-sw:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: .3s;
+        }
+
+        input:checked+.slider-sw {
+            background: #3b82f6;
+        }
+
+        input:checked+.slider-sw:before {
+            transform: translateX(16px);
+        }
+
+        /* Opacity range */
+        .opacity-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .opacity-row label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            white-space: nowrap;
+        }
+
+        .opacity-row input[type=range] {
+            flex: 1;
+            accent-color: #3b82f6;
+            height: 4px;
+            cursor: pointer;
+        }
+
+        .opacity-val {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            width: 32px;
+            text-align: right;
+        }
+
+        /* Color picker */
+        .color-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .color-row label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        .color-row input[type=color] {
+            width: 28px;
+            height: 22px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            padding: 1px;
+            background: transparent;
+        }
+
+        /* Section heading */
+        .section-head {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #64748b;
+            padding: 14px 14px 6px;
+        }
+
+        /* Reset button */
+        #reset-btn {
+            margin: 8px 12px 0;
+            background: linear-gradient(90deg, #3b82f6, #6366f1);
+            color: white;
+            font-size: 0.78rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 0;
+            width: calc(100% - 24px);
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        #reset-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        #reset-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+
+        <!-- ═══ SIDEBAR ═══ -->
+        <div id="sidebar">
+            <div id="sidebar-inner">
+
+                <!-- Header -->
+                <div
+                    style="padding: 20px 14px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px;">
+                    <div style="font-size:1rem; font-weight:700; color:#f1f5f9; letter-spacing:0.02em;">🗺 Visor GIS
+                    </div>
+                    <div style="font-size:0.7rem; color:#64748b; margin-top:2px;">Dique · Capurro · Montevideo</div>
+                </div>
+
+                <!-- Reset -->
+                <button id="reset-btn">⟳ Resetear Vista</button>
+
+                <!-- ── IMÁGENES ── -->
+                <div class="section-head">Capas de Imagen</div>
+
+                <!-- 1926 -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" style="background:#f59e0b;"></span>
+                            Plano 1926
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-1926" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-1926" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-1926">100%</span>
+                    </div>
+                </div>
+
+                <!-- Foto Actual -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" style="background:#34d399;"></span>
+                            Foto Actual
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-fotos" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-fotos" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-fotos">100%</span>
+                    </div>
+                </div>
+
+                <!-- ── VECTORES ── -->
+                <div class="section-head">Capas Vectoriales (GeoJSON)</div>
+
+                <!-- Parcelas -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" id="dot-parcelas" style="background:#f87171;"></span>
+                            Parcelas 1860
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-parcelas" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-parcelas" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-parcelas">100%</span>
+                    </div>
+                    <div class="color-row">
+                        <label>Color</label>
+                        <input type="color" id="col-parcelas" value="#f87171">
+                    </div>
+                </div>
+
+                <!-- Construcciones -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" id="dot-constr" style="background:#a78bfa;"></span>
+                            Construcciones 1860
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-constr" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-constr" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-constr">100%</span>
+                    </div>
+                    <div class="color-row">
+                        <label>Color</label>
+                        <input type="color" id="col-constr" value="#a78bfa">
+                    </div>
+                </div>
+
+                <!-- Veredas -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" id="dot-veredas" style="background:#fbbf24;"></span>
+                            Veredas 1860
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-veredas" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-veredas" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-veredas">100%</span>
+                    </div>
+                    <div class="color-row">
+                        <label>Color</label>
+                        <input type="color" id="col-veredas" value="#fbbf24">
+                    </div>
+                </div>
+
+                <!-- Línea de Costa -->
+                <div class="layer-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="layer-title">
+                            <span class="dot" id="dot-costa" style="background:#38bdf8;"></span>
+                            Línea de Costa 1860
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-costa" checked>
+                            <span class="slider-sw"></span>
+                        </label>
+                    </div>
+                    <div class="opacity-row">
+                        <label>Opacidad</label>
+                        <input type="range" id="op-costa" min="0" max="100" value="100">
+                        <span class="opacity-val" id="opv-costa">100%</span>
+                    </div>
+                    <div class="color-row">
+                        <label>Color</label>
+                        <input type="color" id="col-costa" value="#38bdf8">
+                    </div>
+                </div>
+
+                <div style="height:20px;"></div>
+            </div><!-- /sidebar-inner -->
+        </div><!-- /sidebar -->
+
+        <!-- Toggle button -->
+        <button id="toggle-btn" title="Mostrar/ocultar panel">
+            <svg id="toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+
+        <!-- ═══ MAP ═══ -->
+        <div id="map"></div>
+
+    </div><!-- /app -->
+
+    <script>
+        // ─────────────────────────────────────────────────────────────────
+        // 0. Definir proyección ANTES de crear el CRS
+        // ─────────────────────────────────────────────────────────────────
+        const UTM21S = '+proj=utm +zone=21 +south +datum=WGS84 +units=m +no_defs';
+        proj4.defs('EPSG:32721', UTM21S);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 1. CRS personalizado EPSG:32721
+        // ─────────────────────────────────────────────────────────────────
+        const EPSG32721 = new L.Proj.CRS('EPSG:32721', UTM21S, {
+            resolutions: [8192, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25],
+            origin: [0, 0]
+        });
+
+        // ─────────────────────────────────────────────────────────────────
+        // 2. Mapa
+        //
+        //  SOLUCIÓN DE ORDEN DE CAPAS
+        //  ─────────────────────────
+        //  • imagePane  → zIndex 201   ← imágenes (mapa base)
+        //  • overlayPane → zIndex 400  ← vectores (por defecto en Leaflet)
+        //  Como 400 > 201, los vectores están SIEMPRE encima.
+        // ─────────────────────────────────────────────────────────────────
+        const map = L.map('map', {
+            crs: EPSG32721,
+            zoomControl: true,
+            attributionControl: false
+        });
+
+        // Pane exclusivo para imágenes — zIndex por debajo del overlayPane (400)
+        map.createPane('imagePane');
+        map.getPane('imagePane').style.zIndex = 201;
+        // Evitar que las imágenes capturen clics (los vectores los necesitan)
+        map.getPane('imagePane').style.pointerEvents = 'none';
+
+        // ─────────────────────────────────────────────────────────────────
+        // 3. Convertir BBOX UTM → LatLng para imageOverlay
+        // ─────────────────────────────────────────────────────────────────
+        // [[E_min, N_min], [E_max, N_max]]
+        const RAW_BBOX = [[572566.05, 6136206.30], [573741.90, 6136931.25]];
+
+        function utmToLatLng(e, n) {
+            const ll = proj4('EPSG:32721', 'WGS84', [e, n]);
+            return L.latLng(ll[1], ll[0]);
+        }
+
+        const sw = utmToLatLng(RAW_BBOX[0][0], RAW_BBOX[0][1]);
+        const ne = utmToLatLng(RAW_BBOX[1][0], RAW_BBOX[1][1]);
+        const BOUNDS = L.latLngBounds(sw, ne);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 4. Capas de imagen  — van al imagePane (debajo de vectores)
+        // ─────────────────────────────────────────────────────────────────
+        const imgOpts = { pane: 'imagePane', opacity: 1 };
+
+        const img1926 = L.imageOverlay('recorte_1926.jpeg', BOUNDS, imgOpts).addTo(map);
+        const imgActual = L.imageOverlay('recorte_act.jpeg', BOUNDS, imgOpts).addTo(map);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 5. Capas Vectoriales GeoJSON
+        //
+        //  Los nuevos archivos están en WGS84 (sufijo _WGS84).
+        //  Leaflet los lee directamente sin conversión de coordenadas.
+        //  Al ir en el overlayPane por defecto (zIndex 400),
+        //  siempre quedan POR ENCIMA del imagePane (zIndex 201).
+        // ─────────────────────────────────────────────────────────────────
+        let lyParcelas, lyConstr, lyVeredas, lyCosta;
+
+        const vectorColors = {
+            parcelas: '#f87171',
+            constr: '#a78bfa',
+            veredas: '#fbbf24',
+            costa: '#38bdf8'
+        };
+
+        function geojsonStyle(key, opacity) {
+            const col = vectorColors[key];
+            return { color: col, fillColor: col, weight: 2, opacity, fillOpacity: opacity * 0.35 };
+        }
+
+        async function loadGeoJSON(file, key) {
+            try {
+                const res = await fetch(file);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+
+                return L.geoJSON(data, {
+                    // Sin coordsToLatLng: archivo ya en WGS84
+                    style: () => geojsonStyle(key, 1),
+                    onEachFeature(f, lyr) {
+                        if (f.properties) {
+                            const rows = Object.entries(f.properties)
+                                .map(([k, v]) =>
+                                    `<tr>
+                 <td style="color:#64748b;padding-right:8px;font-weight:600">${k}</td>
+                 <td>${v ?? ''}</td>
+               </tr>`)
+                                .join('');
+                            lyr.bindPopup(
+                                `<table style="font-size:0.74rem;font-family:monospace;border-collapse:collapse">${rows}</table>`
+                            );
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('No se pudo cargar ' + file + ':', e.message);
+                return null;
+            }
+        }
+
+        async function initVectors() {
+            lyParcelas = await loadGeoJSON('1860_parcelasWGS84.geojson', 'parcelas');
+            lyConstr = await loadGeoJSON('1860_construccionesWGS84.geojson', 'constr');
+            lyVeredas = await loadGeoJSON('1860_veredasWGS84.geojson', 'veredas');
+            lyCosta = await loadGeoJSON('1860_lineacostaLINEAWGS84.geojson', 'costa');
+
+            // addTo(map) los pone en el overlayPane por defecto (zIndex 400)
+            [lyParcelas, lyConstr, lyVeredas, lyCosta].forEach(l => { if (l) l.addTo(map); });
+        }
+
+        initVectors();
+
+        // ─────────────────────────────────────────────────────────────────
+        // 6. Ajustar vista inicial
+        // ─────────────────────────────────────────────────────────────────
+        map.fitBounds(BOUNDS);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 7. Resetear vista
+        // ─────────────────────────────────────────────────────────────────
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            map.fitBounds(BOUNDS, { animate: true });
+        });
+
+        // ─────────────────────────────────────────────────────────────────
+        // 8. Sidebar toggle
+        // ─────────────────────────────────────────────────────────────────
+        const sidebar = document.getElementById('sidebar');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const toggleIcon = document.getElementById('toggle-icon');
+        let sidebarOpen = true;
+
+        toggleBtn.addEventListener('click', () => {
+            sidebarOpen = !sidebarOpen;
+            sidebar.classList.toggle('collapsed', !sidebarOpen);
+            toggleBtn.style.left = sidebarOpen ? '320px' : '0';
+            toggleIcon.innerHTML = sidebarOpen
+                ? '<polyline points="15 18 9 12 15 6"></polyline>'
+                : '<polyline points="9 18 15 12 9 6"></polyline>';
+            setTimeout(() => map.invalidateSize(), 310);
+        });
+
+        // ─────────────────────────────────────────────────────────────────
+        // 9. Controles de imágenes (opacidad + toggle)
+        // ─────────────────────────────────────────────────────────────────
+        function bindImageOpacity(sliderId, valId, getLayer) {
+            const slider = document.getElementById(sliderId);
+            const valEl = document.getElementById(valId);
+            slider.addEventListener('input', () => {
+                const v = parseInt(slider.value, 10);
+                valEl.textContent = v + '%';
+                const l = getLayer();
+                if (l) l.setOpacity(v / 100);
+            });
+        }
+
+        function bindImageToggle(chkId, getLayer) {
+            document.getElementById(chkId).addEventListener('change', function () {
+                const l = getLayer();
+                if (!l) return;
+                if (this.checked) { if (!map.hasLayer(l)) map.addLayer(l); }
+                else { if (map.hasLayer(l)) map.removeLayer(l); }
+            });
+        }
+
+        bindImageOpacity('op-1926', 'opv-1926', () => img1926);
+        bindImageToggle('chk-1926', () => img1926);
+
+        bindImageOpacity('op-fotos', 'opv-fotos', () => imgActual);
+        bindImageToggle('chk-fotos', () => imgActual);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 10. Controles de vectores (opacidad + color + toggle)
+        // ─────────────────────────────────────────────────────────────────
+        function bindVector(key, chkId, opId, opvId, colId, dotId, getLayer) {
+            // Opacidad
+            document.getElementById(opId).addEventListener('input', function () {
+                const v = parseInt(this.value, 10);
+                document.getElementById(opvId).textContent = v + '%';
+                const l = getLayer();
+                if (l) l.setStyle({ opacity: v / 100, fillOpacity: (v / 100) * 0.35 });
+            });
+
+            // Visibilidad
+            document.getElementById(chkId).addEventListener('change', function () {
+                const l = getLayer();
+                if (!l) return;
+                if (this.checked) { if (!map.hasLayer(l)) map.addLayer(l); }
+                else { if (map.hasLayer(l)) map.removeLayer(l); }
+            });
+
+            // Color
+            document.getElementById(colId).addEventListener('input', function () {
+                const col = this.value;
+                vectorColors[key] = col;
+                document.getElementById(dotId).style.background = col;
+                const l = getLayer();
+                if (l) {
+                    const op = parseInt(document.getElementById(opId).value, 10) / 100;
+                    l.setStyle({ color: col, fillColor: col, opacity: op, fillOpacity: op * 0.35 });
+                }
+            });
+        }
+
+        bindVector('parcelas', 'chk-parcelas', 'op-parcelas', 'opv-parcelas', 'col-parcelas', 'dot-parcelas', () => lyParcelas);
+        bindVector('constr', 'chk-constr', 'op-constr', 'opv-constr', 'col-constr', 'dot-constr', () => lyConstr);
+        bindVector('veredas', 'chk-veredas', 'op-veredas', 'opv-veredas', 'col-veredas', 'dot-veredas', () => lyVeredas);
+        bindVector('costa', 'chk-costa', 'op-costa', 'opv-costa', 'col-costa', 'dot-costa', () => lyCosta);
+
+        // ─────────────────────────────────────────────────────────────────
+        // 11. Atribución
+        // ─────────────────────────────────────────────────────────────────
+        L.control.attribution({ prefix: 'Leaflet · Proj4Leaflet · EPSG:32721' }).addTo(map);
+    </script>
+</body>
+
+</html>
